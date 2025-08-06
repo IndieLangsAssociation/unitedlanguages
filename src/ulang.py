@@ -120,8 +120,9 @@ match cmd:
     case "install":
         try:
             print(f"[INFO] Fetching registry metadata (data.json)")
-            metaData = json.loads(getFileText("data.json"))
-            packages = metaData["packages"]
+            metaData = json.loads(getFileText("packages/data.json"))
+            print(f"[LOG] METADATA: {metaData}")
+            packages = metaData["packages"].keys()
         except Exception as e:
             print(f"[FATAL] Failed to load package registry: {e}")
             sys.exit(1)
@@ -133,7 +134,7 @@ match cmd:
                 print(f"[ERROR] Package '{packageToInstall}' is not found in registry")
                 continue
             try:
-                pathToPackage = packageToInstall
+                pathToPackage = metaData["packages"][packageToInstall]
                 print(f"[INFO] Getting package directory listing for: {pathToPackage}")
                 packageDir = getDirChildrenJson(pathToPackage)
 
@@ -144,6 +145,7 @@ match cmd:
 
                 print(f"[INFO] Downloading metadata.json for {packageToInstall}")
                 packageDICT = json.loads(getTextFromJson(packageMetaData))
+                print(f"[LOG] PACKAGE DICT : {packageDICT}")
 
                 latestVer = packageDICT["latest"]
                 latestVerPath = packageDICT["verstions"][latestVer]
