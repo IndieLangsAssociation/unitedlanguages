@@ -7,14 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"syscall"
-	"unsafe"
 )
 
 var (
 	RAW_BASE_URL = "https://raw.githubusercontent.com/IndieLangsAssociation/unitedlanguages/main"
-	API_BASE_URL = "https://api.github.com/repos/IndieLangsAssociation/unitedlanguages/contents"
 )
 
 func getFileText(filePath string) string {
@@ -35,53 +33,79 @@ func getFileText(filePath string) string {
 	return string(data)
 }
 
-func addToUserPATH(folder string) {
-	key, err := syscall.UTF16PtrFromString("Environment")
-	valueName, _ := syscall.UTF16PtrFromString("Path")
+func downloadBinary(destDir string) {
+	var platform string
+	switch runtime.GOOS {
+	case "windows":
+		platform = "win"
+	case "linux":
+		platform = "linux"
+	case "darwin":
+		platform = "mac"
+	default:
+		fmt.Printf("[ERROR] Unsupported OS: %s\n", runtime.GOOS)
+		os.Exit(1)
+	}
 
-	hKey := syscall.Handle(0x80000001) // HKEY_CURRENT_USER
-	var regKey syscall.Handle
-	err = syscall.RegOpenKeyEx(hKey, key, 0, syscall.KEY_READ|syscall.KEY_WRITE, &regKey)
+	url := fmt.Sprintf("%s/build/%s/ulang.exe", RAW_BASE_URL, platform)
+	outPath := filepath.Join(destDir, "ulang.exe")
+
+	fmt.Printf("[INFO] Downloading binary from: %s\n", url)
+	resp, err := http.Get(url)
 	if err != nil {
-		// Create new key if it doesn't exist
-
-		err = syscall.RegCreateKeyEx(hKey, key, 0, nil, 0, syscall.KEY_WRITE, nil, &regKey, nil)
-		if err != nil {
-			fmt.Printf("[ERROR] Could not create registry key: %v\n", err)
-			return
-		}
-		defer syscall.RegCloseKey(regKey)
-		syscall.RegSetValueEx(regKey, valueName, 0, syscall.REG_EXPAND_SZ, syscall.StringToUTF16Bytes(folder))
-		fmt.Println("[INFO] Path created and set.")
-		return
+		fmt.Printf("[ERROR] Download failed: %v\n", err)
+		os.Exit(1)
 	}
-	defer syscall.RegCloseKey(regKey)
+	defer resp.Body.Close()
 
-	var buf [1 << 12]uint16
-	var bufLen uint32 = uint32(len(buf))
-	syscall.RegQueryValueEx(regKey, valueName, nil, nil, (*byte)(unsafe.Pointer(&buf[0])), &bufLen)
-	curPath := syscall.UTF16ToString(buf[:])
-
-	paths := strings.Split(curPath, ";")
-	for _, p := range paths {
-		if p == folder {
-			fmt.Println("[INFO] Path already exists")
-			return
-		}
+	if resp.StatusCode != 200 {
+		fmt.Printf("[ERROR] Binary not found for platform: %s\n", platform)
+		os.Exit(1)
 	}
-	paths = append(paths, folder)
-	newPath := strings.Join(paths, ";")
-	syscall.RegSetValueEx(regKey, valueName, 0, syscall.REG_EXPAND_SZ, syscall.StringToUTF16Bytes(newPath))
-	fmt.Println("[INFO] Successfully added to user PATH.")
+
+	out, err := os.Create(outPath)
+	if err != nil {
+		fmt.Printf("[ERROR] Could not write file: %v\n", err)
+		os.Exit(1)
+	}
+	defer out.Close()
+
+	io.Copy(out, resp.Body)
+	fmt.Printf("[INFO] Downloaded binary to: %s\n", outPath)
+	os.Chmod(outPath, 0755)
 }
 
-func broadcastEnvChange() {
-	HWND_BROADCAST := uintptr(0xffff)
-	WM_SETTINGCHANGE := uintptr(0x001A)
-	SMTO_ABORTIFHUNG := uintptr(0x0002)
-	user32 := syscall.NewLazyDLL("user32.dll")
-	proc := user32.NewProc("SendMessageTimeoutW")
-	proc.Call(HWND_BROADCAST, WM_SETTINGCHANGE, 0, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("Environment"))), SMTO_ABORTIFHUNG, 5000, 0)
+func addToPathUnix(folder string) {
+	shellProfile := filepath.Join(os.Getenv("HOME"), ".profile")
+	if _, err := os.Stat(shellProfile); os.IsNotExist(err) {
+		shellProfile = filepath.Join(os.Getenv("HOME"), ".bashrc")
+	}
+	exportLine := fmt.Sprintf("\nexport PATH=\"$PATH:%s\"\n", folder)
+
+	content, _ := os.ReadFile(shellProfile)
+	if strings.Contains(string(content), folder) {
+		fmt.Println("[INFO] Path already exists in shell profile")
+		return
+	}
+
+	f, err := os.OpenFile(shellProfile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Printf("[WARN] Could not update shell profile: %v\n", err)
+		return
+	}
+	defer f.Close()
+	f.WriteString(exportLine)
+	fmt.Printf("[INFO] Added to shell profile: %s\n", shellProfile)
+}
+
+func addToPathWindows(folder string) {
+	cmd := exec.Command("powershell", "-Command", fmt.Sprintf(`[Environment]::SetEnvironmentVariable("Path", "$Env:Path + ";%s"", "User")`, folder))
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("[ERROR] Failed to set PATH: %v\n", err)
+		return
+	}
+	fmt.Println("[INFO] Added to user PATH via PowerShell")
 }
 
 func main() {
@@ -98,11 +122,19 @@ func main() {
 		fmt.Printf("[INFO] Installed: %s\n", path)
 	}
 
-	addToUserPATH(installDir)
-	broadcastEnvChange()
+	downloadBinary(installDir)
+
+	switch runtime.GOOS {
+	case "windows":
+		addToPathWindows(installDir)
+	case "linux", "darwin":
+		addToPathUnix(installDir)
+	default:
+		fmt.Printf("[ERROR] Unsupported OS: %s\n", runtime.GOOS)
+	}
 
 	fmt.Printf("[LOG] ADDED %s to user PATH\n", installDir)
 	fmt.Printf("[LOG] Installed: %s; edit config.json to your needs.\n", strings.Join(files, ", "))
 	fmt.Println("Press Enter to exit...")
-	exec.Command("cmd", "/c", "pause").Run()
+	fmt.Scanln()
 }
