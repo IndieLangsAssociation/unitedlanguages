@@ -155,5 +155,23 @@ match cmd:
                 downloadBranched(latestVerPath, os.path.join(config["PackagesStorageDir"], packageDICT["Name"]))
             except Exception as e:
                 print(f"[ERROR] Failed to install package '{packageToInstall}': {e}")
+    case "--update-self":
+        install_dir = os.path.join(os.path.expanduser("~"), "ulang")
+        ulang_pyPATH = os.path.join(install_dir, "ulang.py")
+        with open(ulang_pyPATH, "w", encoding="utf-8") as f:
+            f.write(getFileText("src/ulang.py"))
+
+    case "list":
+        for root, dirs, files in os.walk(config["PackagesStorageDir"]):
+            for dir_name in dirs:
+                full_dir_path = os.path.join(root, dir_name)
+                print(f"    -> Name: {dir_name}")
+                for _, _, version_files in os.walk(full_dir_path):
+                    for version_file in version_files:
+                        print(f"        -> version name: {version_file}")
+                # Only list top-level versions per dir
+                break  # Prevent os.walk from recursively descending into subdirs
+            break  # Prevent going deeper into other subdirectories  
+
     case _:
         print(f"[ERROR] Unknown command: {cmd}")
