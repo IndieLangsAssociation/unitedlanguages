@@ -35,11 +35,13 @@ jobs:
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           output_name="ulang-${GOOS}-${GOARCH}${ext}"
           zip_name="ulang-${GOOS}-${GOARCH}.zip"
-          
-          # Build the binary
-          go build -o "$output_name" .
 
-          # Create ZIP
+          # Change to correct directory and build
+          cd "GO/src GO"
+          go build -o "../../$output_name" ulang.go
+          cd ../..
+
+          # Zip the binary
           zip "dist/$zip_name" "$output_name"
 
       - name: 📤 Upload to GitHub Release
