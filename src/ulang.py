@@ -148,7 +148,7 @@ match cmd:
                 print(f"[LOG] PACKAGE DICT : {packageDICT}")
 
                 latestVer = packageDICT["latest"]
-                latestVerPath = packageDICT["verstions"][latestVer]
+                latestVerPath = packageDICT["versions"][latestVer]
                 print(f"[INFO] Latest version is {latestVer}, path: {latestVerPath}")
 
                 print(f"[INFO] Starting recursive download for version: {latestVer}")
