@@ -1,4 +1,4 @@
-name: Release Go Binary
+name: Release Go Binaries
 
 on:
   push:
@@ -24,25 +24,34 @@ jobs:
         with:
           go-version: '1.24.6'
 
-      - name: 🏗️ Build Go binary
+      - name: 🏗️ Build ulang and installer binaries
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
           mkdir -p dist
+          
           ext=""
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-          output_name="ulang-${GOOS}-${GOARCH}${ext}"
-          zip_name="ulang-${GOOS}-${GOARCH}.zip"
 
-          # Change to correct directory and build
+          
+          echo "🔧 Building ulang"
           cd "GO/src GO"
-          go build -o "../../$output_name" ulang.go
+          go build -o "../../../ulang-${GOOS}-${GOARCH}${ext}" ulang.go
           cd ../..
 
-          # Zip the binary
-          zip "dist/$zip_name" "$output_name"
+          
+          zip "dist/ulang-${GOOS}-${GOARCH}.zip" "ulang-${GOOS}-${GOARCH}${ext}"
+
+          
+          echo "🔧 Building installer"
+          cd "GO/installer GO"
+          go build -o "../../../installer-${GOOS}-${GOARCH}${ext}" installer.go
+          cd ../..
+
+          
+          zip "dist/installer-${GOOS}-${GOARCH}.zip" "installer-${GOOS}-${GOARCH}${ext}"
 
       - name: 📤 Upload to GitHub Release
         uses: softprops/action-gh-release@v1
